@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 M3U Playlist Generator
-Reads an Mp3tag CSV export and generates genre-based M3U playlist files.
+Reads an Mp3tag CSV export and generates genre-based M3U playlist files
+with relative paths suitable for use on a DAP.
 
 Usage:
     python generate_playlists.py <input.csv> <output_folder>
@@ -16,6 +17,9 @@ Mp3tag export template:
     $filename(csv,utf-16)Title;Artist;Album;Track;Year;Length;Size;Last Modified;Path;Filename;Genre;
     $loop(%_filename_ext%)%title%;%artist%;%album%;%track%;%year%;%_length_seconds%;%_file_size%;%_file_mod_date%;%_folderpath%;%_filename_ext%;%genre%;
     $loopend()build on %_date% with %_app% - the universal Tag editor - http://www.mp3tag.de/en/
+
+Place the generated .m3u files in the ROOT of your SD card (e.g. E:\).
+Music files should be in the folder structure defined by the TARGET_PREFIX configuration. (e.g. "Music\Artist\Album\Track.flac")
 """
 
 import os
@@ -25,8 +29,12 @@ import sys
 # CONFIGURATION — edit these to customise your playlists
 # ============================================================
 
+# The prefix to strip from absolute paths to make them relative
+# e.g. "D:\\Music\\Songs\\" becomes "Music\\" on the SD card
+SOURCE_PREFIX = "D:\\Music\\Songs\\"
+TARGET_PREFIX = "Music\\"
+
 # Artists to always put in Pop & Country regardless of genre tags
-# (Singapore local artists)
 SINGAPORE_ARTISTS = {
     "gareth fernandez", "rave republic", "charlie lim", "jasmine sokko",
     "nathan hartono", "daren yuen", "causeway youth", "taiyo amari",
@@ -101,11 +109,15 @@ def parse_csv(filepath):
             header = parts
             continue
         if header and len(parts) >= 10:
+            # Build relative path for DAP
+            full_path = parts[8] + parts[9]
+            relative_path = full_path.replace(SOURCE_PREFIX, TARGET_PREFIX)
             tracks.append({
                 'title': parts[0],
                 'artist': parts[1],
                 'album': parts[2],
                 'filename': parts[9],
+                'path': relative_path,
                 'genre': parts[10].strip() if len(parts) > 10 else '',
             })
 
@@ -119,7 +131,7 @@ def classify_tracks(tracks):
     for t in tracks:
         artist_lower = t['artist'].lower()
         all_genres = [g.strip().lower() for g in t['genre'].split(',') if g.strip()]
-        entry = (t['title'], t['artist'], t['album'], t['filename'])
+        entry = (t['title'], t['artist'], t['album'], t['path'])
 
         # Multi-playlist artists
         if artist_lower in MULTI_PLAYLIST_ARTISTS:
@@ -154,14 +166,15 @@ def classify_tracks(tracks):
 def write_m3u(filepath, tracks):
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write("#EXTM3U\n")
-        for title, artist, album, filename in tracks:
+        for title, artist, album, path in tracks:
             f.write(f"#EXTINF:-1,{artist} - {title}\n")
-            f.write(f"{filename}\n")
+            f.write(f"{path}\n")
 
 
 def main():
     if len(sys.argv) < 3:
         print("Usage: python generate_playlists.py <input.csv> <output_folder>")
+        print("Example: python generate_playlists.py music.csv ./playlists")
         sys.exit(1)
 
     input_csv = sys.argv[1]
@@ -190,7 +203,8 @@ def main():
         print(f"  Unclassified: {len(unclassified)}")
         write_m3u(os.path.join(output_folder, "Unclassified.m3u"), unclassified)
 
-    print(f"\nPlaylists written to: {output_folder}")
+    print(f"\nM3U files written to: {output_folder}")
+    print("Copy .m3u files to the ROOT of your SD card (e.g. E:\\)")
     print("Done!")
 
 
